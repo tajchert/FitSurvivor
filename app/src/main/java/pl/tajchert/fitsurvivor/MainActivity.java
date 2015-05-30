@@ -55,6 +55,9 @@ public class MainActivity extends AppCompatActivity {
     @InjectView(R.id.textMain)
     TextView textMain;
 
+    @InjectView(R.id.textconsecutiveDays)
+    TextView textconsecutiveDays;
+
     /**
      *  Track whether an authorization activity is stacking over the current activity, i.e. when
      *  a known auth error is being resolved, such as showing the account chooser or presenting a
@@ -67,6 +70,7 @@ public class MainActivity extends AppCompatActivity {
 
     private GoogleApiClient mClient = null;
     private OnDataPointListener mListener;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -95,6 +99,12 @@ public class MainActivity extends AppCompatActivity {
                                 Log.i(TAG, "Connected!!!");
                                 registerForSteps();
                                 getStepsToday();
+                                Calendar cal = Calendar.getInstance();
+                                cal.set(Calendar.HOUR_OF_DAY, 0);
+                                cal.set(Calendar.MINUTE, 0);
+                                cal.set(Calendar.SECOND, 0);
+                                long startTime = cal.getTimeInMillis();
+                                checkStreak(startTime, 0);
                             }
 
                             @Override
@@ -221,6 +231,38 @@ public class MainActivity extends AppCompatActivity {
                 }
                 Log.d(TAG, "getStepsToday :" + totalSteps);
                 setSteps(totalSteps);
+            }
+        });
+    }
+
+    private void checkStreak(final long timeEnd, final int consecutiveDays) {
+        final long timeStart =  (timeEnd - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS));
+
+        final DataReadRequest readRequest = new DataReadRequest.Builder()
+                .read(DataType.TYPE_STEP_COUNT_DELTA)
+                .enableServerQueries()
+                .setTimeRange(timeStart, timeEnd, TimeUnit.MILLISECONDS)
+                .build();
+
+        Fitness.HistoryApi.readData(mClient, readRequest).setResultCallback(new ResultCallback<DataReadResult>() {
+            @Override
+            public void onResult(DataReadResult dataReadResult) {
+                DataSet stepData = dataReadResult.getDataSet(DataType.TYPE_STEP_COUNT_DELTA);
+                int totalSteps = 0;
+                for (DataPoint dp : stepData.getDataPoints()) {
+                    for(Field field : dp.getDataType().getFields()) {
+                        int steps = dp.getValue(field).asInt();
+                        totalSteps += steps;
+                    }
+                }
+                if(totalSteps > 0) {
+                    checkStreak((timeEnd - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS)), consecutiveDays + 1);
+                } else {
+                    //set dayNumber as consecutiveDays
+                    if(consecutiveDays > 0) {
+                        textconsecutiveDays.setText(consecutiveDays + " consecutive days!");
+                    }
+                }
             }
         });
     }
