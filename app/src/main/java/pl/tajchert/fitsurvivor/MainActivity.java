@@ -7,6 +7,9 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.TextView;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
@@ -34,6 +37,9 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
+import butterknife.ButterKnife;
+import butterknife.InjectView;
+
 
 /**
  * This sample demonstrates how to use the Sensors API of the Google Fit platform to find
@@ -43,13 +49,20 @@ import java.util.concurrent.TimeUnit;
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
     private static final int REQUEST_OAUTH = 1;
+    @InjectView(R.id.imageMain)
+    ImageView imageMain;
+
+    @InjectView(R.id.textMain)
+    TextView textMain;
 
     /**
      *  Track whether an authorization activity is stacking over the current activity, i.e. when
      *  a known auth error is being resolved, such as showing the account chooser or presenting a
      *  consent dialog. This avoids common duplications as might happen on screen rotations, etc.
      */
-    private static final String AUTH_PENDING = "auth_state_pending";
+    private static final String KEY_AUTH_PENDING = "auth_state_pending";
+    private static final String KEY_STEP_NUMBER = "step_number";
+    private long currentStepNumber;
     private boolean authInProgress = false;
 
     private GoogleApiClient mClient = null;
@@ -58,9 +71,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        ButterKnife.inject(this);
 
         if (savedInstanceState != null) {
-            authInProgress = savedInstanceState.getBoolean(AUTH_PENDING);
+            authInProgress = savedInstanceState.getBoolean(KEY_AUTH_PENDING);
+            setSteps(savedInstanceState.getLong(KEY_STEP_NUMBER));
         }
         buildFitnessClient();
     }
@@ -141,6 +156,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void setSteps(final long stepNumber) {
+        currentStepNumber = stepNumber;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if(stepNumber == 0) {
+                    //No achievement
+                    textMain.setText("Get up and make a first step, then survive.");
+                    imageMain.setVisibility(View.GONE);
+                } else {
+                    textMain.setText("Awesome! You have made over " + stepNumber + " steps today!\n\nKeep on stepping.");
+                    imageMain.setVisibility(View.VISIBLE);
+                }
+            }
+        });
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_OAUTH) {
@@ -157,7 +189,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        outState.putBoolean(AUTH_PENDING, authInProgress);
+        outState.putBoolean(KEY_AUTH_PENDING, authInProgress);
+        outState.putLong(KEY_STEP_NUMBER, currentStepNumber);
     }
 
     private void getStepsToday() {
@@ -187,6 +220,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
                 Log.d(TAG, "getStepsToday :" + totalSteps);
+                setSteps(totalSteps);
             }
         });
     }
@@ -227,6 +261,9 @@ public class MainActivity extends AppCompatActivity {
                     Value val = dataPoint.getValue(field);
                     Log.i(TAG, "Detected DataPoint field: " + field.getName());
                     Log.i(TAG, "Detected DataPoint value: " + val);
+                    if("steps".equals(field.getName())) {
+                        setSteps(val.asInt());
+                    }
                 }
             }
         };
