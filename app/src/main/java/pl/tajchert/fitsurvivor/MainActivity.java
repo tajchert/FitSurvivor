@@ -21,20 +21,15 @@ import com.google.android.gms.common.api.Scope;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.fitness.Fitness;
 import com.google.android.gms.fitness.data.DataPoint;
-import com.google.android.gms.fitness.data.DataSet;
 import com.google.android.gms.fitness.data.DataSource;
 import com.google.android.gms.fitness.data.DataType;
 import com.google.android.gms.fitness.data.Field;
 import com.google.android.gms.fitness.data.Value;
-import com.google.android.gms.fitness.request.DataReadRequest;
 import com.google.android.gms.fitness.request.DataSourcesRequest;
 import com.google.android.gms.fitness.request.OnDataPointListener;
 import com.google.android.gms.fitness.request.SensorRequest;
-import com.google.android.gms.fitness.result.DataReadResult;
 import com.google.android.gms.fitness.result.DataSourcesResult;
 
-import java.util.Calendar;
-import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 import butterknife.ButterKnife;
@@ -63,9 +58,10 @@ public class MainActivity extends AppCompatActivity {
      *  a known auth error is being resolved, such as showing the account chooser or presenting a
      *  consent dialog. This avoids common duplications as might happen on screen rotations, etc.
      */
+    private long currentStepNumber;
     private static final String KEY_AUTH_PENDING = "auth_state_pending";
     private static final String KEY_STEP_NUMBER = "step_number";
-    private long currentStepNumber;
+
     private boolean authInProgress = false;
 
     private GoogleApiClient mClient = null;
@@ -82,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
             setSteps(savedInstanceState.getLong(KEY_STEP_NUMBER));
         }
         buildFitnessClient();
+        mClient.connect();
     }
 
     private void buildFitnessClient() {
@@ -97,14 +94,9 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void onConnected(Bundle bundle) {
                                 Log.i(TAG, "Connected!!!");
-                                registerForSteps();
-                                getStepsToday();
-                                Calendar cal = Calendar.getInstance();
-                                cal.set(Calendar.HOUR_OF_DAY, 0);
-                                cal.set(Calendar.MINUTE, 0);
-                                cal.set(Calendar.SECOND, 0);
-                                long startTime = cal.getTimeInMillis();
-                                checkStreak(startTime, 0);
+                                //registerForSteps();
+                                FitJobBackground.scheduleJob(MainActivity.this);
+                                mClient.disconnect();//As we just needed it to check if we have permission granted and if not show Activity for it
                             }
 
                             @Override
@@ -150,22 +142,6 @@ public class MainActivity extends AppCompatActivity {
                 ).build();
     }
 
-    @Override
-    protected void onStart() {
-        super.onStart();
-        // Connect to the Fitness API
-        Log.i(TAG, "Connecting...");
-        mClient.connect();
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        if (mClient.isConnected()) {
-            mClient.disconnect();
-        }
-    }
-
     private void setSteps(final long stepNumber) {
         currentStepNumber = stepNumber;
         runOnUiThread(new Runnable() {
@@ -203,69 +179,6 @@ public class MainActivity extends AppCompatActivity {
         outState.putLong(KEY_STEP_NUMBER, currentStepNumber);
     }
 
-    private void getStepsToday() {
-        Calendar cal = Calendar.getInstance();
-        Date now = new Date();
-        cal.setTime(now);
-        final long endTime = cal.getTimeInMillis();
-        cal.set(Calendar.HOUR_OF_DAY, 0);
-        cal.set(Calendar.MINUTE, 0);
-        cal.set(Calendar.SECOND, 0);
-        long startTime = cal.getTimeInMillis();
-
-        final DataReadRequest readRequest = new DataReadRequest.Builder()
-                .read(DataType.TYPE_STEP_COUNT_DELTA)
-                .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
-                .build();
-
-        Fitness.HistoryApi.readData(mClient, readRequest).setResultCallback(new ResultCallback<DataReadResult>() {
-            @Override
-            public void onResult(DataReadResult dataReadResult) {
-                DataSet stepData = dataReadResult.getDataSet(DataType.TYPE_STEP_COUNT_DELTA);
-                int totalSteps = 0;
-                for (DataPoint dp : stepData.getDataPoints()) {
-                    for(Field field : dp.getDataType().getFields()) {
-                        int steps = dp.getValue(field).asInt();
-                        totalSteps += steps;
-                    }
-                }
-                Log.d(TAG, "getStepsToday :" + totalSteps);
-                setSteps(totalSteps);
-            }
-        });
-    }
-
-    private void checkStreak(final long timeEnd, final int consecutiveDays) {
-        final long timeStart =  (timeEnd - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS));
-
-        final DataReadRequest readRequest = new DataReadRequest.Builder()
-                .read(DataType.TYPE_STEP_COUNT_DELTA)
-                .enableServerQueries()
-                .setTimeRange(timeStart, timeEnd, TimeUnit.MILLISECONDS)
-                .build();
-
-        Fitness.HistoryApi.readData(mClient, readRequest).setResultCallback(new ResultCallback<DataReadResult>() {
-            @Override
-            public void onResult(DataReadResult dataReadResult) {
-                DataSet stepData = dataReadResult.getDataSet(DataType.TYPE_STEP_COUNT_DELTA);
-                int totalSteps = 0;
-                for (DataPoint dp : stepData.getDataPoints()) {
-                    for(Field field : dp.getDataType().getFields()) {
-                        int steps = dp.getValue(field).asInt();
-                        totalSteps += steps;
-                    }
-                }
-                if(totalSteps > 0) {
-                    checkStreak((timeEnd - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS)), consecutiveDays + 1);
-                } else {
-                    //set dayNumber as consecutiveDays
-                    if(consecutiveDays > 0) {
-                        textconsecutiveDays.setText(consecutiveDays + " consecutive days!");
-                    }
-                }
-            }
-        });
-    }
 
     private void registerForSteps() {
         Fitness.SensorsApi.findDataSources(mClient, new DataSourcesRequest.Builder()
