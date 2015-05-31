@@ -1,8 +1,13 @@
 package pl.tajchert.fitsurvivor;
 
+import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -35,10 +40,14 @@ public class FitJobBackground extends JobService {
     private static final String TAG = FitJobBackground.class.getSimpleName();
     private static final int JOB_ID = 42523;
 
+    private SharedPreferences sharedPreferences;
+
     private GoogleApiClient mClient = null;
     private ConsecutiveDays consecutiveDays;
     private StepsToday stepsToday;
     private boolean showNotif = false;
+    private JobParameters jobParameters;
+    private long stepsDuringConsecutiveDays;
 
     //Coordinator lib stuff
     private static final int ACTION_STEPS_TODAY = 1;
@@ -46,11 +55,12 @@ public class FitJobBackground extends JobService {
     @Actions({ACTION_STEPS_TODAY, ACTION_CONSECUTIVE_DAYS})
     Coordinator coordinator;
 
-    public FitJobBackground() {
-    }
+    public FitJobBackground() {}
 
     @Override
     public boolean onStartJob(JobParameters params) {
+        jobParameters = params;
+        sharedPreferences = FitJobBackground.this.getSharedPreferences("pl.tajchert.fitsurvivor", Context.MODE_PRIVATE);
         buildFitnessClient();
         mClient.connect();
         Coordinator.inject(this);
@@ -78,12 +88,6 @@ public class FitJobBackground extends JobService {
                             public void onConnected(Bundle bundle) {
                                 Log.i(TAG, "Connected!!!");
                                 getStepsToday();
-                                Calendar cal = Calendar.getInstance();
-                                cal.set(Calendar.HOUR_OF_DAY, 0);
-                                cal.set(Calendar.MINUTE, 0);
-                                cal.set(Calendar.SECOND, 0);
-                                long startTime = cal.getTimeInMillis();
-                                checkStreak(startTime, 0);
                             }
 
                             @Override
@@ -137,13 +141,32 @@ public class FitJobBackground extends JobService {
                 }
                 Log.d(TAG, "getStepsToday :" + totalSteps);
                 stepsToday = new StepsToday(totalSteps);
-                EventBus.getDefault().post(stepsToday);
+                if(stepsToday.steps > 100) {
+                    //100 to avoid miscounted steps
+                    //Check if previous days were also so good.
+                    long startTime = getMidnightTime();
+                    checkStreak(startTime, 0);
+                } else {
+                    //We dont check it so assume it is done
+                    coordinator.completeAction(ACTION_CONSECUTIVE_DAYS);
+                }
                 coordinator.completeAction(ACTION_STEPS_TODAY);
             }
         });
     }
 
+    private long getMidnightTime() {
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        return cal.getTimeInMillis();
+    }
+
     private void checkStreak(final long timeEnd, final int consecutiveDaysNumber) {
+        if(consecutiveDaysNumber == 0) {
+            stepsDuringConsecutiveDays = 0;
+        }
         final long timeStart =  (timeEnd - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS));
 
         final DataReadRequest readRequest = new DataReadRequest.Builder()
@@ -164,13 +187,13 @@ public class FitJobBackground extends JobService {
                     }
                 }
                 if(totalSteps > 0) {
+                    stepsDuringConsecutiveDays += totalSteps;
                     checkStreak((timeEnd - TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS)), consecutiveDaysNumber + 1);
                 } else {
                     //set dayNumber as consecutiveDays
                     if(consecutiveDaysNumber > 0) {
                         Log.d(TAG, "onResult consecutive days: " + consecutiveDaysNumber);
-                        consecutiveDays = new ConsecutiveDays(totalSteps, consecutiveDaysNumber);
-                        EventBus.getDefault().post(consecutiveDays);
+                        consecutiveDays = new ConsecutiveDays(stepsDuringConsecutiveDays, consecutiveDaysNumber);
                         coordinator.completeAction(ACTION_CONSECUTIVE_DAYS);
                     }
                 }
@@ -178,19 +201,79 @@ public class FitJobBackground extends JobService {
         });
     }
 
-    @CoordinatorComplete public void showNotification() {
-        Log.d(TAG, "showNotification actions are done!");
-        if(consecutiveDays == null) {
-            Log.d(TAG, "showNotification consecutiveDays is null");
+    /**
+     * Gets called when both actions (steps during today and consecutive days) were executed
+     */
+    @CoordinatorComplete public void allDone() {
+        Log.d(TAG, "allDone actions are done!");
+        boolean notifShown = false;//Used to avoid showing notification more than onece a day
+
+        if(consecutiveDays != null) {
+            EventBus.getDefault().post(consecutiveDays);
+            if (consecutiveDays.days > 0) {
+                if(shouldShowNotification()) {
+                    notifShown = true;
+                    showConsecutiveDaysAchievment(consecutiveDays);
+                }
+            }
         }
-        if(stepsToday == null) {
-            Log.d(TAG, "showNotification stepsToday is null");
+
+        if(stepsToday != null) {
+            EventBus.getDefault().post(stepsToday);
+            if (stepsToday.steps > 100) {
+                //100 to avoid miscounted steps
+                if(shouldShowNotification()) {
+                    notifShown = true;
+                    showChetAchievment(stepsToday);
+                }
+            }
         }
-        showNotif = true;
+        if(notifShown) {
+            saveNotificationTime();
+        }
+
+        jobFinished(jobParameters, false);
+    }
+
+    private void showChetAchievment(StepsToday stepsToday) {
+        int notificationId = 32423;
+        Intent viewIntent = new Intent(this, FitJobBackground.class);
+        PendingIntent viewPendingIntent = PendingIntent.getActivity(this, 0, viewIntent, 0);
+
+        NotificationCompat.Builder notificationBuilder =
+                new NotificationCompat.Builder(this)
+                        .setSmallIcon(R.drawable.ic_trophy_black_48dp)
+                        .setContentTitle("Chet\'s achievement unlocked!")
+                        .setContentText("Good job!")
+                        .setSubText("You are on your best way to survive another day!")
+                        .setAutoCancel(true)
+                        .setContentIntent(viewPendingIntent);
+
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+        notificationManager.notify(notificationId, notificationBuilder.build());
+
+    }
+
+    private void showConsecutiveDaysAchievment(ConsecutiveDays consecutiveDays) {
+        int notificationId = 32455;
+        Intent viewIntent = new Intent(this, FitJobBackground.class);
+        PendingIntent viewPendingIntent = PendingIntent.getActivity(this, 0, viewIntent, 0);
+
+        NotificationCompat.Builder notificationBuilder =
+                new NotificationCompat.Builder(this)
+                        .setSmallIcon(R.drawable.ic_trophy_black_48dp)
+                        .setContentTitle("Movement spree!")
+                        .setSubText("On average with " + consecutiveDays.stepsPerDay + " steps per day.")
+                        .setContentText("This is your " + consecutiveDays.days + " day with movement.")
+                        .setContentIntent(viewPendingIntent);
+
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+        notificationManager.notify(notificationId, notificationBuilder.build());
     }
 
     public static void scheduleJob(Context context) {
         JobScheduler jobScheduler = JobScheduler.getInstance(context);
+        jobScheduler.cancel(JOB_ID);
         JobInfo job = new JobInfo.Builder(JOB_ID, new ComponentName(context, FitJobBackground.class))
                 .setPeriodic(TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS))
                 .setPersisted(true)
@@ -199,7 +282,28 @@ public class FitJobBackground extends JobService {
         jobScheduler.schedule(job);
     }
 
-    public class FitError {
+    public static void runJob(Context context) {
+        JobScheduler jobScheduler = JobScheduler.getInstance(context);
+        JobInfo job = new JobInfo.Builder(233222, new ComponentName(context, FitJobBackground.class)).setOverrideDeadline(1000).build();
 
+        jobScheduler.schedule(job);
     }
+
+    private boolean shouldShowNotification() {
+        long prevTime = sharedPreferences.getLong("LastRefresh", 0);
+        Calendar prevRefresh = Calendar.getInstance();
+        prevRefresh.setTimeInMillis(prevTime);
+        if(Calendar.getInstance().get(Calendar.DAY_OF_YEAR) != prevRefresh.get(Calendar.DAY_OF_YEAR) || prevTime == 0) {
+            //it is another day, lets refresh
+            return  true;
+        } else {
+            return false;
+        }
+    }
+
+    private void saveNotificationTime() {
+        sharedPreferences.edit().putLong("LastRefresh", System.currentTimeMillis()).apply();
+    }
+
+    public class FitError {}
 }

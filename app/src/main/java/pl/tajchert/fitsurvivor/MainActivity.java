@@ -1,9 +1,14 @@
 package pl.tajchert.fitsurvivor;
 
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
+import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.CardView;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -16,24 +21,13 @@ import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.Scopes;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
-import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Scope;
-import com.google.android.gms.common.api.Status;
 import com.google.android.gms.fitness.Fitness;
-import com.google.android.gms.fitness.data.DataPoint;
-import com.google.android.gms.fitness.data.DataSource;
-import com.google.android.gms.fitness.data.DataType;
-import com.google.android.gms.fitness.data.Field;
-import com.google.android.gms.fitness.data.Value;
-import com.google.android.gms.fitness.request.DataSourcesRequest;
-import com.google.android.gms.fitness.request.OnDataPointListener;
-import com.google.android.gms.fitness.request.SensorRequest;
-import com.google.android.gms.fitness.result.DataSourcesResult;
-
-import java.util.concurrent.TimeUnit;
 
 import butterknife.ButterKnife;
 import butterknife.InjectView;
+import butterknife.OnClick;
+import de.greenrobot.event.EventBus;
 
 
 /**
@@ -41,17 +35,36 @@ import butterknife.InjectView;
  * available data sources and to register/unregister listeners to those sources. It also
  * demonstrates how to authenticate a user with Google Play Services.
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SwipeRefreshLayout.OnRefreshListener {
+    private SharedPreferences sharedPreferences;
     private static final String TAG = MainActivity.class.getSimpleName();
     private static final int REQUEST_OAUTH = 1;
-    @InjectView(R.id.imageMain)
-    ImageView imageMain;
+    @InjectView(R.id.cardviewOnboarding)
+    CardView cardviewOnboarding;
 
-    @InjectView(R.id.textMain)
-    TextView textMain;
+    @InjectView(R.id.cardviewDaily)
+    CardView cardviewDaily;
 
-    @InjectView(R.id.textconsecutiveDays)
-    TextView textconsecutiveDays;
+    @InjectView(R.id.cardviewSpree)
+    CardView cardviewSpree;
+
+    @InjectView(R.id.cardviewError)
+    CardView cardviewError;
+
+    @InjectView(R.id.imageError)
+    ImageView imageError;
+
+    @InjectView(R.id.textErrorContent)
+    TextView textErrorContent;
+
+    @InjectView(R.id.textDailyDesc)
+    TextView textDailyDesc;
+
+    @InjectView(R.id.textSpreeDesc)
+    TextView textSpreeDesc;
+
+    @InjectView(R.id.swipeRefresh)
+    SwipeRefreshLayout swipeRefreshLayout;
 
     /**
      *  Track whether an authorization activity is stacking over the current activity, i.e. when
@@ -60,27 +73,44 @@ public class MainActivity extends AppCompatActivity {
      */
     private long currentStepNumber;
     private static final String KEY_AUTH_PENDING = "auth_state_pending";
-    private static final String KEY_STEP_NUMBER = "step_number";
 
     private boolean authInProgress = false;
 
     private GoogleApiClient mClient = null;
-    private OnDataPointListener mListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ButterKnife.inject(this);
+        EventBus.getDefault().register(this);
+        sharedPreferences = getSharedPreferences("pl.tajchert.fitsurvivor", Context.MODE_PRIVATE);
+        if(sharedPreferences.getBoolean("gotit", false)) {
+            cardviewOnboarding.setVisibility(View.GONE);
+        }
 
         if (savedInstanceState != null) {
             authInProgress = savedInstanceState.getBoolean(KEY_AUTH_PENDING);
-            setSteps(savedInstanceState.getLong(KEY_STEP_NUMBER));
         }
+
+        swipeRefreshLayout.setColorSchemeColors(Color.parseColor("#FFF46E5F"), Color.parseColor("#F44336"), Color.parseColor("#D32F2F"));
+        swipeRefreshLayout.setOnRefreshListener(this);
         buildFitnessClient();
-        mClient.connect();
+        if(mClient != null && !mClient.isConnected() && !mClient.isConnecting()) {
+            mClient.connect();
+            //To fix problem with setRefreshing before onMeasure
+            swipeRefreshLayout.post(new Runnable() {
+                @Override
+                public void run() {
+                    swipeRefreshLayout.setRefreshing(true);
+                }
+            });
+        }
     }
 
+    /**
+     * Used just for checking if we have permission and if not to show Activity to grant access to Fit data
+     */
     private void buildFitnessClient() {
         // Create the Google API Client
         mClient = new GoogleApiClient.Builder(this)
@@ -94,9 +124,10 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void onConnected(Bundle bundle) {
                                 Log.i(TAG, "Connected!!!");
-                                //registerForSteps();
+                                swipeRefreshLayout.setRefreshing(true);
+                                FitJobBackground.runJob(MainActivity.this);
                                 FitJobBackground.scheduleJob(MainActivity.this);
-                                mClient.disconnect();//As we just needed it to check if we have permission granted and if not show Activity for it
+                                mClient.disconnect();
                             }
 
                             @Override
@@ -108,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
                                 } else if (i == ConnectionCallbacks.CAUSE_SERVICE_DISCONNECTED) {
                                     Log.i(TAG, "Connection lost.  Reason: Service Disconnected");
                                 }
+                                swipeRefreshLayout.setRefreshing(false);
                             }
                         }
                 )
@@ -117,6 +149,7 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void onConnectionFailed(ConnectionResult result) {
                                 Log.i(TAG, "Connection failed. Cause: " + result.toString());
+                                swipeRefreshLayout.setRefreshing(false);
                                 if (!result.hasResolution()) {
                                     // Show the localized error dialog
                                     GooglePlayServicesUtil.getErrorDialog(result.getErrorCode(),
@@ -142,21 +175,33 @@ public class MainActivity extends AppCompatActivity {
                 ).build();
     }
 
-    private void setSteps(final long stepNumber) {
-        currentStepNumber = stepNumber;
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                if(stepNumber == 0) {
-                    //No achievement
-                    textMain.setText("Get up and make a first step, then survive.");
-                    imageMain.setVisibility(View.GONE);
-                } else {
-                    textMain.setText("Awesome! You have made over " + stepNumber + " steps today!\n\nKeep on stepping.");
-                    imageMain.setVisibility(View.VISIBLE);
-                }
-            }
-        });
+
+    public void onEvent(ConsecutiveDays consecutiveDays) {
+        Log.d(TAG, "onEvent consecutiveDays: " + consecutiveDays.days + ", steps: " + consecutiveDays.stepsPerDay);
+        swipeRefreshLayout.setRefreshing(false);
+        if(consecutiveDays.days == 0) {
+            return;
+        }
+        cardviewError.setVisibility(View.GONE);
+        cardviewSpree.setVisibility(View.VISIBLE);
+        textSpreeDesc.setText("Awesome! You are on a movement spree! This is your " + consecutiveDays.days + " consecutive day with a movement.\n\nOn average you have done " + consecutiveDays.stepsPerDay + " steps per day, with a total of " + consecutiveDays.stepsTotal + " steps.");
+    }
+
+    public void onEvent(StepsToday stepsToday) {
+        Log.d(TAG, "onEvent stepsToday: " + stepsToday.steps);
+        swipeRefreshLayout.setRefreshing(false);
+        cardviewError.setVisibility(View.GONE);
+        cardviewDaily.setVisibility(View.VISIBLE);
+        textDailyDesc.setText("Congrats! You are on you best way to survive another day, steps so far : " + stepsToday.steps + ".\n\nKeep on stepping!");
+    }
+
+    public void onEvent(FitJobBackground.FitError fitError) {
+        Log.d(TAG, "onEvent fitError!");
+        swipeRefreshLayout.setRefreshing(false);
+        cardviewError.setVisibility(View.VISIBLE);
+        cardviewSpree.setVisibility(View.GONE);
+        cardviewDaily.setVisibility(View.GONE);
+        textErrorContent.setText("Something went wrong. Make sure that you have Google Fit app on you phone and you authorized Fit Survivor to read its data.");
     }
 
     @Override
@@ -173,110 +218,56 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onDestroy() {
+        EventBus.getDefault().unregister(this);
+        super.onDestroy();
+    }
+
+    @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putBoolean(KEY_AUTH_PENDING, authInProgress);
-        outState.putLong(KEY_STEP_NUMBER, currentStepNumber);
     }
 
-
-    private void registerForSteps() {
-        Fitness.SensorsApi.findDataSources(mClient, new DataSourcesRequest.Builder()
-                .setDataTypes(DataType.TYPE_STEP_COUNT_CUMULATIVE)
-                .setDataSourceTypes(DataSource.TYPE_RAW)
-                .build())
-                .setResultCallback(new ResultCallback<DataSourcesResult>() {
-                    @Override
-                    public void onResult(DataSourcesResult dataSourcesResult) {
-                        Log.i(TAG, "Result: " + dataSourcesResult.getStatus().toString());
-                        for (DataSource dataSource : dataSourcesResult.getDataSources()) {
-
-                            Log.i(TAG, "Data source found: " + dataSource.toString());
-                            Log.i(TAG, "Data Source type: " + dataSource.getDataType().getName());
-
-                            if (dataSource.getDataType().equals(DataType.TYPE_STEP_COUNT_CUMULATIVE) && mListener == null) {
-                                Log.i(TAG, "Data source for LOCATION_SAMPLE found!  Registering.");
-                                registerFitnessDataListener(dataSource, DataType.TYPE_STEP_COUNT_CUMULATIVE);
-                            }
-                        }
-                    }
-                });
+    @OnClick(R.id.buttonGotIt)
+    public void gotIt() {
+        //Save
+        sharedPreferences.edit().putBoolean("gotit", true).apply();
+        cardviewOnboarding.setVisibility(View.GONE);
     }
 
-    /**
-     * Register a listener with the Sensors API for the provided {@link DataSource} and
-     * {@link DataType} combo.
-     */
-    private void registerFitnessDataListener(DataSource dataSource, DataType dataType) {
-        // [START register_data_listener]
-        mListener = new OnDataPointListener() {
-            @Override
-            public void onDataPoint(DataPoint dataPoint) {
-                for (Field field : dataPoint.getDataType().getFields()) {
-                    Value val = dataPoint.getValue(field);
-                    Log.i(TAG, "Detected DataPoint field: " + field.getName());
-                    Log.i(TAG, "Detected DataPoint value: " + val);
-                    if("steps".equals(field.getName())) {
-                        setSteps(val.asInt());
-                    }
-                }
-            }
-        };
-
-        Fitness.SensorsApi.add(mClient, new SensorRequest.Builder()
-                        .setDataSource(dataSource) // Optional but recommended for custom data sets.
-                        .setDataType(dataType) // Can't be omitted.
-                        .setSamplingRate(10, TimeUnit.SECONDS)
-                        .build(), mListener)
-                .setResultCallback(new ResultCallback<Status>() {
-                    @Override
-                    public void onResult(Status status) {
-                        if (status.isSuccess()) {
-                            Log.i(TAG, "Listener registered!");
-                        } else {
-                            Log.i(TAG, "Listener not registered.");
-                        }
-                    }
-                });
-    }
-
-    /**
-     * Unregister the listener with the Sensors API.
-     */
-    private void unregisterFitnessDataListener() {
-        if (mListener == null) {
-            // This code only activates one listener at a time.  If there's no listener, there's
-            // nothing to unregister.
-            return;
+    @OnClick(R.id.buttonShareDaily)
+    public void shareDaily() {
+        //Share
+        if(textDailyDesc.getText().toString() != null) {
+            shareText("Chet\'s achievement unlocked! "+textDailyDesc.getText().toString());
         }
+    }
 
-        // Waiting isn't actually necessary as the unregister call will complete regardless,
-        // even if called from within onStop, but a callback can still be added in order to
-        // inspect the results.
-        Fitness.SensorsApi.remove(mClient,mListener).setResultCallback(new ResultCallback<Status>() {
-            @Override
-            public void onResult(Status status) {
-                if (status.isSuccess()) {
-                    Log.i(TAG, "Listener was removed!");
-                } else {
-                    Log.i(TAG, "Listener was not removed.");
-                }
-            }
-        });
+    @OnClick(R.id.buttonShareSpree)
+    public void shareSpree() {
+        //Share
+        if(textSpreeDesc.getText().toString() != null) {
+            shareText(textSpreeDesc.getText().toString());
+        }
+    }
+
+    private void shareText(String text) {
+        text = "Fit Survivor\n\n" + text;
+        Intent sharingIntent = new Intent(android.content.Intent.ACTION_SEND);
+        sharingIntent.setType("text/plain");
+        sharingIntent.putExtra(android.content.Intent.EXTRA_SUBJECT, "Fit Survivor");
+        sharingIntent.putExtra(android.content.Intent.EXTRA_TEXT, text);
+        startActivity(Intent.createChooser(sharingIntent,"Share using: "));
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.menu_main, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        int id = item.getItemId();
-        if (id == R.id.action_settings) {
-            return true;
+    public void onRefresh() {
+        if(mClient != null && !mClient.isConnected() && !mClient.isConnecting()) {
+            cardviewDaily.setVisibility(View.GONE);
+            cardviewSpree.setVisibility(View.GONE);
+            cardviewError.setVisibility(View.GONE);
+            mClient.connect();
         }
-        return super.onOptionsItemSelected(item);
     }
 }

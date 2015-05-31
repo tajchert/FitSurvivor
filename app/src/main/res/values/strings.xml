@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">Fit Survivor</string>
     <string name="action_settings">Settings</string>
+    <string name="onboarding_title">What, why, how?</string>
+    <string name="action_share">Share</string>
+    <string name="onboarding_desc">App was created as a project to play with Google Fit API, idea comes from Android Developer Backstage podcast - thus daily achievement is called \"Chet\'s achievement\".\n\nGoogle Fit app is required.\n\nApp check if you moved on current day if so it notify you, and as well counts consecutive days of movement.</string>
+
+    <string name="spree_goal_title">Movement spree!</string>
+    <string name="daily_goal_title">Chet\'s achievement unlocked!</string>
 </resources>
