@@ -1,14 +1,14 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion "android-MNC"
+    compileSdkVersion 22
     buildToolsVersion "22.0.1"
     defaultConfig {
         applicationId "pl.tajchert.fitsurvivor"
         minSdkVersion 14
-        targetSdkVersion "MNC"
-        versionCode 1
-        versionName "1.0"
+        targetSdkVersion 22
+        versionCode 3
+        versionName "1.1"
     }
     buildTypes {
         release {
@@ -27,5 +27,5 @@ dependencies {
     compile 'me.tatarka.support:jobscheduler:0.1.1'
     compile 'com.android.support:appcompat-v7:22.2.0'
     compile 'com.android.support:cardview-v7:22.2.0'
-    compile 'com.google.android.gms:play-services:7.5.+'
+    compile 'com.google.android.gms:play-services-fitness:7.5.0'
 }

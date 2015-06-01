@@ -7,4 +7,5 @@
 
     <string name="spree_goal_title">Movement spree!</string>
     <string name="daily_goal_title">Chet\'s achievement unlocked!</string>
+    <string name="no_activity_desc">No activity detected today.\n\nMake sure to use Google Fit app to track your movement and try again after a short run, or at least some walk.</string>
 </resources>

@@ -10,8 +10,6 @@ import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.CardView;
 import android.util.Log;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -50,6 +48,9 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
 
     @InjectView(R.id.cardviewError)
     CardView cardviewError;
+
+    @InjectView(R.id.cardviewNoActivity)
+    CardView cardviewNoActivity;
 
     @InjectView(R.id.imageError)
     ImageView imageError;
@@ -183,6 +184,7 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
             return;
         }
         cardviewError.setVisibility(View.GONE);
+        cardviewNoActivity.setVisibility(View.GONE);
         cardviewSpree.setVisibility(View.VISIBLE);
         textSpreeDesc.setText("Awesome! You are on a movement spree! This is your " + consecutiveDays.days + " consecutive day with a movement.\n\nOn average you have done " + consecutiveDays.stepsPerDay + " steps per day, with a total of " + consecutiveDays.stepsTotal + " steps.");
     }
@@ -190,9 +192,17 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
     public void onEvent(StepsToday stepsToday) {
         Log.d(TAG, "onEvent stepsToday: " + stepsToday.steps);
         swipeRefreshLayout.setRefreshing(false);
-        cardviewError.setVisibility(View.GONE);
-        cardviewDaily.setVisibility(View.VISIBLE);
-        textDailyDesc.setText("Congrats! You are on you best way to survive another day, steps so far : " + stepsToday.steps + ".\n\nKeep on stepping!");
+        if(stepsToday.steps < 100) {
+            cardviewNoActivity.setVisibility(View.VISIBLE);
+            cardviewDaily.setVisibility(View.GONE);
+            cardviewError.setVisibility(View.GONE);
+            cardviewSpree.setVisibility(View.GONE);
+        } else {
+            cardviewError.setVisibility(View.GONE);
+            cardviewNoActivity.setVisibility(View.GONE);
+            cardviewDaily.setVisibility(View.VISIBLE);
+            textDailyDesc.setText("Congrats! You are on you best way to survive another day, steps so far : " + stepsToday.steps + ".\n\nKeep on stepping!");
+        }
     }
 
     public void onEvent(FitJobBackground.FitError fitError) {
@@ -201,6 +211,7 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
         cardviewError.setVisibility(View.VISIBLE);
         cardviewSpree.setVisibility(View.GONE);
         cardviewDaily.setVisibility(View.GONE);
+        cardviewNoActivity.setVisibility(View.GONE);
         textErrorContent.setText("Something went wrong. Make sure that you have Google Fit app on you phone and you authorized Fit Survivor to read its data.");
     }
 
@@ -267,6 +278,7 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
             cardviewDaily.setVisibility(View.GONE);
             cardviewSpree.setVisibility(View.GONE);
             cardviewError.setVisibility(View.GONE);
+            cardviewNoActivity.setVisibility(View.GONE);
             mClient.connect();
         }
     }

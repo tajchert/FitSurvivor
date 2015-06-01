@@ -275,7 +275,7 @@ public class FitJobBackground extends JobService {
         JobScheduler jobScheduler = JobScheduler.getInstance(context);
         jobScheduler.cancel(JOB_ID);
         JobInfo job = new JobInfo.Builder(JOB_ID, new ComponentName(context, FitJobBackground.class))
-                .setPeriodic(TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS))
+                .setPeriodic((TimeUnit.MILLISECONDS.convert(1, TimeUnit.DAYS))/4)//as we need to check more often than once a day as first check can be with 0 steps and result in no notification
                 .setPersisted(true)
                 .setRequiresCharging(true)
                 .build();

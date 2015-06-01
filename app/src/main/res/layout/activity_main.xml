@@ -210,6 +210,44 @@
 
                 </RelativeLayout>
             </android.support.v7.widget.CardView>
+
+            <android.support.v7.widget.CardView
+                android:id="@+id/cardviewNoActivity"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="5dp"
+                android:layout_marginLeft="@dimen/activity_horizontal_margin"
+                android:layout_marginRight="@dimen/activity_horizontal_margin"
+                android:layout_marginTop="10dp"
+                android:visibility="gone"
+                card_view:cardCornerRadius="2dp"
+                card_view:cardElevation="2dp">
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="5dp">
+
+                    <ImageView
+                        android:id="@+id/imageRun"
+                        android:layout_width="100dp"
+                        android:layout_height="100dp"
+                        android:layout_centerHorizontal="true"
+                        android:src="@drawable/ic_action_directions_run" />
+
+                    <TextView
+                        android:id="@+id/textNoActivityContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_below="@+id/imageRun"
+                        android:layout_margin="5dp"
+                        android:fontFamily="sans-serif-condensed"
+                        android:text="@string/no_activity_desc"
+                        android:gravity="center"
+                        android:textAppearance="@android:style/TextAppearance.DeviceDefault.Medium" />
+
+                </RelativeLayout>
+            </android.support.v7.widget.CardView>
         </LinearLayout>
     </ScrollView>
 </android.support.v4.widget.SwipeRefreshLayout>
